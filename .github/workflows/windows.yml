@@ -129,9 +129,9 @@ jobs:
           cmake --build build --config Release
 
           mkdir windows\X64\Release
-          copy build\Release\hidapi.dll windows\X64\Release\
-          copy build\Release\hidapi.lib windows\X64\Release\
-
+          copy build\src\windows\Release\hidapi.dll windows\X64\Release\
+          copy build\src\windows\Release\hidapi.lib windows\X64\Release\
+          
       - name: Build Opus
         shell: cmd
         working-directory: ${{ github.workspace }}\opus
