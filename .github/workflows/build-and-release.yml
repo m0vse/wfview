@@ -1001,60 +1001,69 @@ jobs:
         done
 
     - name: Get and update version
+      id: version
       shell: python
       run: |
-          import os, re, subprocess
+        import os, re, subprocess
 
-          # Handle both checkout styles - with and without path: wfview
-          pro_path = 'wfview/wfview.pro' if os.path.exists('wfview/wfview.pro') else 'wfview.pro'
-          git_dir = 'wfview' if os.path.exists('wfview/.git') else '.'
+        # Detect checkout location
+        if os.path.exists('wfview/.git'):
+            pro_path = 'wfview/wfview.pro'
+            git_dir = 'wfview'
+        elif os.path.exists('.git'):
+            pro_path = 'wfview.pro'
+            git_dir = '.'
+        else:
+            raise RuntimeError("Cannot find .git directory")
 
-          ref = os.environ['GITHUB_REF']
-          short = subprocess.check_output(
-              ['git', '-C', git_dir, 'rev-parse', '--short', 'HEAD'],
-              text=True
-          ).strip()
-          bundle_version = subprocess.check_output(
-              ['git', '-C', git_dir, 'rev-list', '--count', 'HEAD'],
-              text=True
-          ).strip()
+        print(f"Using pro_path={pro_path}, git_dir={git_dir}")
 
-          if ref.startswith('refs/tags/'):
-              version = ref.replace('refs/tags/', '').lstrip('v')
-          else:
-              with open(pro_path, 'r') as f:
-                  content = f.read()
+        ref = os.environ['GITHUB_REF']
+        short = subprocess.check_output(
+            ['git', '-C', git_dir, 'rev-parse', '--short', 'HEAD'],
+            text=True
+        ).strip()
+        bundle_version = subprocess.check_output(
+            ['git', '-C', git_dir, 'rev-list', '--count', 'HEAD'],
+            text=True
+        ).strip()
 
-              for line in content.splitlines():
-                  if 'WFVIEW_VERSION' in line:
-                      m = re.search(r'(\d+\.\d+)', line)
-                      base = m.group(1) if m else '0.0'
-                      break
+        if ref.startswith('refs/tags/'):
+            version = ref.replace('refs/tags/', '').lstrip('v')
+        else:
+            with open(pro_path, 'r') as f:
+                content = f.read()
 
-              version = f"{base}-{short}"
+            for line in content.splitlines():
+                if 'WFVIEW_VERSION' in line:
+                    m = re.search(r'(\d+\.\d+)', line)
+                    base = m.group(1) if m else '0.0'
+                    break
 
-          print(f"Version will be: {version}")
+            version = f"{base}-{short}"
 
-          with open(pro_path, 'r') as f:
-              content = f.read()
+        print(f"Version will be: {version}")
 
-          content = re.sub(
-              r'(WFVIEW_VERSION=(?:\\+\")+)\d+\.\d+((?:\\+\")+)',
-              f'\\g<1>{version}\\g<2>',
-              content
-          )
+        with open(pro_path, 'r') as f:
+            content = f.read()
 
-          with open(pro_path, 'w') as f:
-              f.write(content)
+        content = re.sub(
+            r'(WFVIEW_VERSION=(?:\\+\")+)\d+\.\d+((?:\\+\")+)',
+            f'\\g<1>{version}\\g<2>',
+            content
+        )
 
-          with open(pro_path, 'r') as f:
-              for line in f:
-                  if 'WFVIEW_VERSION' in line:
-                      print(f"Result: {repr(line.strip())}")
+        with open(pro_path, 'w') as f:
+            f.write(content)
 
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-              f.write(f"version={version}\n")
-              f.write(f"bundle_version={bundle_version}\n")
+        with open(pro_path, 'r') as f:
+            for line in f:
+                if 'WFVIEW_VERSION' in line:
+                    print(f"Result: {repr(line.strip())}")
+
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+            f.write(f"version={version}\n")
+            f.write(f"bundle_version={bundle_version}\n")
               
     # ─── Build ──────────────────────────────────────────────────────────
     - name: Run qmake
