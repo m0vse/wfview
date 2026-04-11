@@ -146,9 +146,9 @@ jobs:
             -A Win32 ^
             -DBUILD_SHARED_LIBS=ON
           cmake --build build --config Release
-          mkdir windows\Debug
-          copy build\src\windows\Release\hidapi.dll windows\Debug\
-          copy build\src\windows\Release\hidapi.lib windows\Debug\
+          if not exist windows\Release mkdir windows\Release
+          copy /y build\src\windows\Release\hidapi.dll windows\Release\
+          copy /y build\src\windows\Release\hidapi.lib windows\Release\
 
       - name: Build Opus
         shell: cmd
@@ -162,6 +162,36 @@ jobs:
           mkdir win32\VS2015\win32\ReleaseDLL
           copy build\Release\opus.dll win32\VS2015\win32\ReleaseDLL\opus-0.dll
           copy build\Release\opus.lib win32\VS2015\win32\ReleaseDLL\opus.lib
+
+      - name: Update version from tag or commit
+        shell: python
+        run: |
+          import re, os, subprocess
+
+          ref = os.environ['GITHUB_REF']
+          if ref.startswith('refs/tags/'):
+              version = ref.replace('refs/tags/', '').lstrip('v')
+          else:
+              version = subprocess.check_output(
+                  ['git', '-C', 'wfview', 'rev-parse', '--short', 'HEAD'],
+                  text=True
+              ).strip()
+              # Prepend existing version for clarity e.g. "2.21-abc1234"
+              with open('wfview/wfview.pro', 'r') as f:
+                  existing = re.search(r'WFVIEW_VERSION=\\\"([^\\]*)\\\"', f.read())
+              if existing:
+                  version = f"{existing.group(1)}-{version}"
+
+          with open('wfview/wfview.pro', 'r') as f:
+              content = f.read()
+          content = re.sub(
+              r'WFVIEW_VERSION=\\\"[^\\]*\\\"',
+              f'WFVIEW_VERSION=\\\\"{version}\\\\"',
+              content
+          )
+          with open('wfview/wfview.pro', 'w') as f:
+              f.write(content)
+          print(f"Updated version to {version}")
 
       - name: Build wfview
         shell: cmd
@@ -358,6 +388,36 @@ jobs:
           mkdir win32\VS2015\x64\ReleaseDLL
           copy build\Release\opus.dll win32\VS2015\x64\ReleaseDLL\opus-0.dll
           copy build\Release\opus.lib win32\VS2015\x64\ReleaseDLL\opus.lib
+
+      - name: Update version from tag or commit
+        shell: python
+        run: |
+          import re, os, subprocess
+
+          ref = os.environ['GITHUB_REF']
+          if ref.startswith('refs/tags/'):
+              version = ref.replace('refs/tags/', '').lstrip('v')
+          else:
+              version = subprocess.check_output(
+                  ['git', '-C', 'wfview', 'rev-parse', '--short', 'HEAD'],
+                  text=True
+              ).strip()
+              # Prepend existing version for clarity e.g. "2.21-abc1234"
+              with open('wfview/wfview.pro', 'r') as f:
+                  existing = re.search(r'WFVIEW_VERSION=\\\"([^\\]*)\\\"', f.read())
+              if existing:
+                  version = f"{existing.group(1)}-{version}"
+
+          with open('wfview/wfview.pro', 'r') as f:
+              content = f.read()
+          content = re.sub(
+              r'WFVIEW_VERSION=\\\"[^\\]*\\\"',
+              f'WFVIEW_VERSION=\\\\"{version}\\\\"',
+              content
+          )
+          with open('wfview/wfview.pro', 'w') as f:
+              f.write(content)
+          print(f"Updated version to {version}")
           
       - name: Build wfview
         shell: cmd
