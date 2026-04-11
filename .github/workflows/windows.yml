@@ -59,9 +59,6 @@ jobs:
       - name: Write QCustomPlot pro file
         shell: bash
         run: |
-          echo "=== QCustomPlot directory structure ==="
-          find qcustomplot -maxdepth 2 -type f | sort
-
           mkdir -p qcustomplot/qcustomplot-sharedlib/build
 
           cat > qcustomplot/qcustomplot-sharedlib/build/qcustomplot-sharedlib.pro << 'EOF'
@@ -78,7 +75,7 @@ jobs:
           
       - name: Build QCustomPlot
         shell: cmd
-        working-directory: ..\qcustomplot\qcustomplot-sharedlib\build
+        working-directory: ${{ github.workspace }}\qcustomplot\qcustomplot-sharedlib\build
         run: |
           qmake qcustomplot-sharedlib.pro CONFIG+=release
           nmake
