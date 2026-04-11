@@ -82,12 +82,9 @@ jobs:
         with:
           arch: x86
 
-      - name: Get version
+      - name: Get and update version
         id: version
-        shell: bash
-        run: |
-          VERSION=$(grep 'WFVIEW_VERSION' wfview/wfview.pro | grep -oE '[0-9]+\.[0-9]+')
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+        uses: ./.github/actions/get-version
 
       - name: Install jom
         uses: nick-fields/retry@v2
@@ -168,47 +165,6 @@ jobs:
           copy build\Release\opus-0.dll win32\VS2015\win32\ReleaseDLL\opus-0.dll
           copy build\Release\opus-0.lib win32\VS2015\win32\ReleaseDLL\opus.lib
 
-      - name: Update version from tag or commit
-        shell: python
-        run: |
-          import re, os, subprocess
-
-          ref = os.environ['GITHUB_REF']
-          if ref.startswith('refs/tags/'):
-              version = ref.replace('refs/tags/', '').lstrip('v')
-          else:
-              short = subprocess.check_output(
-                  ['git', '-C', 'wfview', 'rev-parse', '--short', 'HEAD'],
-                  text=True
-              ).strip()
-
-              with open('wfview/wfview.pro', 'r') as f:
-                  content = f.read()
-
-              existing = re.search(r'WFVIEW_VERSION=\\\\\"([^\\]+)', content)
-              base = existing.group(1) if existing else '0.0'
-              version = f"{base}-{short}"
-
-          print(f"Version will be: {version}")
-
-          with open('wfview/wfview.pro', 'r') as f:
-              content = f.read()
-
-          content = re.sub(
-              r'WFVIEW_VERSION=\\\\\"[^\\]*\\\\\"',
-              f'WFVIEW_VERSION=\\\\\\\"{version}\\\\\\\"',
-              content
-          )
-
-          with open('wfview/wfview.pro', 'w') as f:
-              f.write(content)
-
-          # Verify
-          with open('wfview/wfview.pro', 'r') as f:
-              for line in f:
-                  if 'WFVIEW_VERSION' in line:
-                      print(f"Result: {repr(line.strip())}")
-                      
       - name: Build wfview
         shell: cmd
         working-directory: wfview
@@ -320,12 +276,9 @@ jobs:
         with:
           arch: x64
 
-      - name: Get version
+      - name: Get and update version
         id: version
-        shell: bash
-        run: |
-          VERSION=$(grep 'WFVIEW_VERSION' wfview/wfview.pro | grep -oE '[0-9]+\.[0-9]+')
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+        uses: ./.github/actions/get-version
 
       - name: Install jom
         uses: nick-fields/retry@v2
@@ -409,48 +362,7 @@ jobs:
           mkdir win32\VS2015\x64\ReleaseDLL
           copy build\Release\opus-0.dll win32\VS2015\x64\ReleaseDLL\opus-0.dll
           copy build\Release\opus-0.lib win32\VS2015\x64\ReleaseDLL\opus.lib
-
-      - name: Update version from tag or commit
-        shell: python
-        run: |
-          import re, os, subprocess
-
-          ref = os.environ['GITHUB_REF']
-          if ref.startswith('refs/tags/'):
-              version = ref.replace('refs/tags/', '').lstrip('v')
-          else:
-              short = subprocess.check_output(
-                  ['git', '-C', 'wfview', 'rev-parse', '--short', 'HEAD'],
-                  text=True
-              ).strip()
-
-              with open('wfview/wfview.pro', 'r') as f:
-                  content = f.read()
-
-              existing = re.search(r'WFVIEW_VERSION=\\\\\"([^\\]+)', content)
-              base = existing.group(1) if existing else '0.0'
-              version = f"{base}-{short}"
-
-          print(f"Version will be: {version}")
-
-          with open('wfview/wfview.pro', 'r') as f:
-              content = f.read()
-
-          content = re.sub(
-              r'WFVIEW_VERSION=\\\\\"[^\\]*\\\\\"',
-              f'WFVIEW_VERSION=\\\\\\\"{version}\\\\\\\"',
-              content
-          )
-
-          with open('wfview/wfview.pro', 'w') as f:
-              f.write(content)
-
-          # Verify
-          with open('wfview/wfview.pro', 'r') as f:
-              for line in f:
-                  if 'WFVIEW_VERSION' in line:
-                      print(f"Result: {repr(line.strip())}")
-          
+        
       - name: Build wfview
         shell: cmd
         working-directory: wfview
