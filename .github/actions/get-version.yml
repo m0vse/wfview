@@ -1,0 +1,66 @@
+name: Get and update version
+description: Updates WFVIEW_VERSION in wfview.pro from tag or commit, then outputs the version
+
+outputs:
+  version:
+    description: The version string
+    value: ${{ steps.get_version.outputs.version }}
+  bundle_version:
+    description: The bundle version (commit count)
+    value: ${{ steps.get_version.outputs.bundle_version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Update version from tag or commit
+      shell: python
+      run: |
+        import os, re, subprocess
+
+        ref = os.environ['GITHUB_REF']
+        if ref.startswith('refs/tags/'):
+            version = ref.replace('refs/tags/', '').lstrip('v')
+        else:
+            short = subprocess.check_output(
+                ['git', '-C', 'wfview', 'rev-parse', '--short', 'HEAD'],
+                text=True
+            ).strip()
+
+            with open('wfview/wfview.pro', 'r') as f:
+                content = f.read()
+
+            for line in content.splitlines():
+                if 'WFVIEW_VERSION' in line:
+                    m = re.search(r'(\d+\.\d+)', line)
+                    base = m.group(1) if m else '0.0'
+                    break
+
+            version = f"{base}-{short}"
+
+        print(f"Version will be: {version}")
+
+        with open('wfview/wfview.pro', 'r') as f:
+            content = f.read()
+
+        content = re.sub(
+            r'(WFVIEW_VERSION=(?:\\+\")+)\d+\.\d+((?:\\+\")+)',
+            f'\\g<1>{version}\\g<2>',
+            content
+        )
+
+        with open('wfview/wfview.pro', 'w') as f:
+            f.write(content)
+
+        with open('wfview/wfview.pro', 'r') as f:
+            for line in f:
+                if 'WFVIEW_VERSION' in line:
+                    print(f"Result: {repr(line.strip())}")
+
+    - name: Get version
+      id: get_version
+      shell: bash
+      run: |
+        VERSION=$(grep 'WFVIEW_VERSION' wfview/wfview.pro | grep -oE '[0-9]+\.[0-9.a-z-]+')
+        BUNDLE_VERSION=$(git -C wfview rev-list --count HEAD)
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "bundle_version=$BUNDLE_VERSION" >> $GITHUB_OUTPUT
