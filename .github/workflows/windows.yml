@@ -84,7 +84,58 @@ jobs:
 
       - name: Get and update version
         id: version
-        uses: ./wfview/.github/actions/get-version
+        shell: python
+        run: |
+          import os, re, subprocess
+
+          ref = os.environ['GITHUB_REF']
+          short = subprocess.check_output(
+              ['git', '-C', 'wfview', 'rev-parse', '--short', 'HEAD'],
+              text=True
+          ).strip()
+          bundle_version = subprocess.check_output(
+              ['git', '-C', 'wfview', 'rev-list', '--count', 'HEAD'],
+              text=True
+          ).strip()
+
+          if ref.startswith('refs/tags/'):
+              version = ref.replace('refs/tags/', '').lstrip('v')
+          else:
+              with open('wfview/wfview.pro', 'r') as f:
+                  content = f.read()
+
+              for line in content.splitlines():
+                  if 'WFVIEW_VERSION' in line:
+                      m = re.search(r'(\d+\.\d+)', line)
+                      base = m.group(1) if m else '0.0'
+                      break
+
+              version = f"{base}-{short}"
+
+          print(f"Version will be: {version}")
+
+          # Update the .pro file
+          with open('wfview/wfview.pro', 'r') as f:
+              content = f.read()
+
+          content = re.sub(
+              r'(WFVIEW_VERSION=(?:\\+\")+)\d+\.\d+((?:\\+\")+)',
+              f'\\g<1>{version}\\g<2>',
+              content
+          )
+
+          with open('wfview/wfview.pro', 'w') as f:
+              f.write(content)
+
+          with open('wfview/wfview.pro', 'r') as f:
+              for line in f:
+                  if 'WFVIEW_VERSION' in line:
+                      print(f"Result: {repr(line.strip())}")
+
+          # Write outputs
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f"version={version}\n")
+              f.write(f"bundle_version={bundle_version}\n")
 
       - name: Install jom
         uses: nick-fields/retry@v2
@@ -278,7 +329,58 @@ jobs:
 
       - name: Get and update version
         id: version
-        uses: ./wfview/.github/actions/get-version
+        shell: python
+        run: |
+          import os, re, subprocess
+
+          ref = os.environ['GITHUB_REF']
+          short = subprocess.check_output(
+              ['git', '-C', 'wfview', 'rev-parse', '--short', 'HEAD'],
+              text=True
+          ).strip()
+          bundle_version = subprocess.check_output(
+              ['git', '-C', 'wfview', 'rev-list', '--count', 'HEAD'],
+              text=True
+          ).strip()
+
+          if ref.startswith('refs/tags/'):
+              version = ref.replace('refs/tags/', '').lstrip('v')
+          else:
+              with open('wfview/wfview.pro', 'r') as f:
+                  content = f.read()
+
+              for line in content.splitlines():
+                  if 'WFVIEW_VERSION' in line:
+                      m = re.search(r'(\d+\.\d+)', line)
+                      base = m.group(1) if m else '0.0'
+                      break
+
+              version = f"{base}-{short}"
+
+          print(f"Version will be: {version}")
+
+          # Update the .pro file
+          with open('wfview/wfview.pro', 'r') as f:
+              content = f.read()
+
+          content = re.sub(
+              r'(WFVIEW_VERSION=(?:\\+\")+)\d+\.\d+((?:\\+\")+)',
+              f'\\g<1>{version}\\g<2>',
+              content
+          )
+
+          with open('wfview/wfview.pro', 'w') as f:
+              f.write(content)
+
+          with open('wfview/wfview.pro', 'r') as f:
+              for line in f:
+                  if 'WFVIEW_VERSION' in line:
+                      print(f"Result: {repr(line.strip())}")
+
+          # Write outputs
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f"version={version}\n")
+              f.write(f"bundle_version={bundle_version}\n")
 
       - name: Install jom
         uses: nick-fields/retry@v2
