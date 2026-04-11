@@ -73,6 +73,13 @@ jobs:
           VERSION=$(grep 'WFVIEW_VERSION' wfview/wfview.pro | grep -oE '[0-9]+\.[0-9]+')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
+      - name: Install jom
+        uses: nick-fields/retry@v2
+        with:
+          timeout_minutes: 5
+          max_attempts: 3
+          command: choco install jom -y
+          
       - name: Write QCustomPlot pro file
         shell: bash
         run: |
@@ -89,22 +96,13 @@ jobs:
           HEADERS += qcustomplot.h
           EOF
 
-          cp qcustomplot/qcustomplot.h qcustomplot/
-
-      - name: Install jom
-        uses: nick-fields/retry@v2
-        with:
-          timeout_minutes: 5
-          max_attempts: 3
-          command: choco install jom -y
-      
       - name: Build QCustomPlot
         shell: cmd
         working-directory: ${{ github.workspace }}\qcustomplot
         run: |
           qmake qcustomplot-sharedlib.pro CONFIG+=release
           jom -j %NUMBER_OF_PROCESSORS%
-
+      
       - name: Build wfview
         shell: cmd
         working-directory: wfview
