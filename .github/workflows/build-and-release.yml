@@ -9,10 +9,9 @@ permissions:
 
 on:
   push:
-    branches: ['**']
+    tags:        
+      - '*'
   workflow_dispatch:
-  #schedule:
-  #  - cron: '0 6 * * 1'
 
 jobs:
   # ═══════════════════════════════════════════════════════════════════
