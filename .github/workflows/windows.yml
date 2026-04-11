@@ -145,6 +145,11 @@ jobs:
           mkdir win32\VS2015\x64\ReleaseDLL
           copy build\Release\opus.dll win32\VS2015\x64\ReleaseDLL\opus-0.dll
           copy build\Release\opus.lib win32\VS2015\x64\ReleaseDLL\opus.lib
+
+      - name: Create LibFT4222 stub
+        shell: bash
+        run: |
+          mkdir -p LibFT4222-v1.4.8/imports/LibFT4222/dll/amd64
           
       - name: Build wfview
         shell: cmd
