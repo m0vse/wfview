@@ -102,7 +102,23 @@ jobs:
         run: |
           qmake qcustomplot-sharedlib.pro CONFIG+=release
           jom -j %NUMBER_OF_PROCESSORS%
-      
+
+      - name: Build PortAudio
+        shell: cmd
+        working-directory: ${{ github.workspace }}\portaudio
+        run: |
+          cmake -B build ^
+            -G "Visual Studio 17 2022" ^
+            -A x64 ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DPA_BUILD_SHARED=ON ^
+            -DPA_BUILD_STATIC=OFF
+          cmake --build build --config Release
+
+          mkdir -p msvc\X64\Release
+          copy build\Release\portaudio_x64.dll msvc\X64\Release\
+          copy build\Release\portaudio_x64.lib msvc\X64\Release\
+          
       - name: Build wfview
         shell: cmd
         working-directory: wfview
