@@ -59,7 +59,6 @@ jobs:
           host: windows
           target: desktop
           arch: win32_msvc2019
-          modules: qtserialport qtwebsockets qtmultimedia
 
       - name: Check available IFW versions
         shell: bash
@@ -123,11 +122,13 @@ jobs:
             -G "Visual Studio 16 2019" ^
             -A Win32 ^
             -DPA_BUILD_SHARED=ON ^
-            -DPA_BUILD_STATIC=OFF
+            -DPA_BUILD_STATIC=OFF ^
+            -DCMAKE_SHARED_LIBRARY_PREFIX="" ^
+            -DPA_OUTPUT_NAME=portaudio_x86
           cmake --build build --config Release
           mkdir msvc\Win32\Release
-          copy build\Release\portaudio.dll msvc\Win32\Release\portaudio_x86.dll
-          copy build\Release\portaudio.lib msvc\Win32\Release\portaudio_x86.lib
+          copy build\Release\portaudio_x86.dll msvc\Win32\Release\portaudio_x86.dll
+          copy build\Release\portaudio_x86.lib msvc\Win32\Release\portaudio_x86.lib
 
       - name: Build HIDAPI
         shell: cmd
@@ -316,12 +317,14 @@ jobs:
             -G "Visual Studio 17 2022" ^
             -A x64 ^
             -DPA_BUILD_SHARED=ON ^
-            -DPA_BUILD_STATIC=OFF
+            -DPA_BUILD_STATIC=OFF ^
+            -DCMAKE_SHARED_LIBRARY_PREFIX="" ^
+            -DPA_OUTPUT_NAME=portaudio_x64
           cmake --build build --config Release
 
           mkdir msvc\X64\Release
-          copy build\Release\portaudio.dll msvc\X64\Release\portaudio_x64.dll
-          copy build\Release\portaudio.lib msvc\X64\Release\portaudio_x64.lib
+          copy build\Release\portaudio_x64.dll msvc\X64\Release\portaudio_x64.dll
+          copy build\Release\portaudio_x64.lib msvc\X64\Release\portaudio_x64.lib
 
       - name: Build HIDAPI
         shell: cmd
