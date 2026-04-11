@@ -1001,25 +1001,28 @@ jobs:
         done
 
     - name: Get and update version
-      id: version
       shell: python
       run: |
           import os, re, subprocess
 
+          # Handle both checkout styles - with and without path: wfview
+          pro_path = 'wfview/wfview.pro' if os.path.exists('wfview/wfview.pro') else 'wfview.pro'
+          git_dir = 'wfview' if os.path.exists('wfview/.git') else '.'
+
           ref = os.environ['GITHUB_REF']
           short = subprocess.check_output(
-              ['git', '-C', 'wfview', 'rev-parse', '--short', 'HEAD'],
+              ['git', '-C', git_dir, 'rev-parse', '--short', 'HEAD'],
               text=True
           ).strip()
           bundle_version = subprocess.check_output(
-              ['git', '-C', 'wfview', 'rev-list', '--count', 'HEAD'],
+              ['git', '-C', git_dir, 'rev-list', '--count', 'HEAD'],
               text=True
           ).strip()
 
           if ref.startswith('refs/tags/'):
               version = ref.replace('refs/tags/', '').lstrip('v')
           else:
-              with open('wfview/wfview.pro', 'r') as f:
+              with open(pro_path, 'r') as f:
                   content = f.read()
 
               for line in content.splitlines():
@@ -1032,8 +1035,7 @@ jobs:
 
           print(f"Version will be: {version}")
 
-          # Update the .pro file
-          with open('wfview/wfview.pro', 'r') as f:
+          with open(pro_path, 'r') as f:
               content = f.read()
 
           content = re.sub(
@@ -1042,15 +1044,14 @@ jobs:
               content
           )
 
-          with open('wfview/wfview.pro', 'w') as f:
+          with open(pro_path, 'w') as f:
               f.write(content)
 
-          with open('wfview/wfview.pro', 'r') as f:
+          with open(pro_path, 'r') as f:
               for line in f:
                   if 'WFVIEW_VERSION' in line:
                       print(f"Result: {repr(line.strip())}")
 
-          # Write outputs
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
               f.write(f"version={version}\n")
               f.write(f"bundle_version={bundle_version}\n")
