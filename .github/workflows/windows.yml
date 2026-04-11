@@ -18,7 +18,22 @@ jobs:
           path: wfview
           fetch-depth: 0
 
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        id: cache-deps
+        with:
+          path: |
+            portaudio
+            opus
+            hidapi
+            rtaudio
+            r8brain-free-src
+            eigen
+            qcustomplot
+          key: windows-deps-${{ hashFiles('wfview/wfview.pro') }}
+
       - name: Checkout dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
         shell: bash
         run: |
           git clone --depth=1 https://github.com/PortAudio/portaudio.git portaudio
@@ -34,10 +49,12 @@ jobs:
           curl -L "https://www.qcustomplot.com/release/2.1.1/QCustomPlot.tar.gz" \
             -o qcustomplot.tar.gz
           tar -xzf qcustomplot.tar.gz -C qcustomplot --strip-components=1
+      
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
           version: 6.8.1
+          cache: true
           host: windows
           target: desktop
           arch: win64_msvc2022_64
@@ -59,32 +76,41 @@ jobs:
       - name: Write QCustomPlot pro file
         shell: bash
         run: |
-          mkdir -p qcustomplot/qcustomplot-sharedlib/build
+          mkdir -p qcustomplot/x64
 
-          cat > qcustomplot/qcustomplot-sharedlib/build/qcustomplot-sharedlib.pro << 'EOF'
+          cat > qcustomplot/qcustomplot-sharedlib.pro << 'EOF'
           TEMPLATE = lib
-          TARGET = qcustomplot
+          TARGET = qcustomplot2
+          DESTDIR = x64
           QT += widgets printsupport
           CONFIG += release shared
           DEFINES += QCUSTOMPLOT_COMPILE_LIBRARY
-          SOURCES += ../../qcustomplot.cpp
-          HEADERS += ../../qcustomplot.h
+          SOURCES += qcustomplot.cpp
+          HEADERS += qcustomplot.h
           EOF
 
-          cp qcustomplot/qcustomplot.h qcustomplot/qcustomplot-sharedlib/build/
-          
+          cp qcustomplot/qcustomplot.h qcustomplot/
+
+      - name: Install jom
+        uses: nick-fields/retry@v2
+        with:
+          timeout_minutes: 5
+          max_attempts: 3
+          command: choco install jom -y
+      
       - name: Build QCustomPlot
         shell: cmd
-        working-directory: ${{ github.workspace }}\qcustomplot\qcustomplot-sharedlib\build
+        working-directory: ${{ github.workspace }}\qcustomplot
         run: |
           qmake qcustomplot-sharedlib.pro CONFIG+=release
-          nmake
+          jom -j %NUMBER_OF_PROCESSORS%
+
       - name: Build wfview
         shell: cmd
         working-directory: wfview
         run: |
           qmake wfview.pro CONFIG+=release
-          nmake
+          jom -j %NUMBER_OF_PROCESSORS%
 
       - name: Deploy Qt dependencies
         shell: cmd
