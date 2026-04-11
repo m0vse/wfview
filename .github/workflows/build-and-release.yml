@@ -9,7 +9,9 @@ permissions:
 
 on:
   push:
-    branches: ['**']
+    tags:        
+      - '*'
+    #branches: ['**']
   workflow_dispatch:
 
 jobs:
