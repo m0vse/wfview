@@ -177,46 +177,38 @@ jobs:
           if ref.startswith('refs/tags/'):
               version = ref.replace('refs/tags/', '').lstrip('v')
           else:
-              # Read the file and debug the content
-              with open('wfview/wfview.pro', 'r') as f:
-                  content = f.read()
-
-              # Find existing version
-              existing = re.search(r'WFVIEW_VERSION=\\\\"([^\\]+)\\\\"', content)
-              if not existing:
-                  existing = re.search(r'WFVIEW_VERSION=\\"([^\\]+)\\"', content)
-              if not existing:
-                  existing = re.search(r'WFVIEW_VERSION="([^"]+)"', content)
-
-              print(f"Existing match: {existing}")
-              if existing:
-                  print(f"Existing version: {existing.group(1)}")
-
               short = subprocess.check_output(
                   ['git', '-C', 'wfview', 'rev-parse', '--short', 'HEAD'],
                   text=True
               ).strip()
 
-              base = existing.group(1) if existing else 'dev'
+              with open('wfview/wfview.pro', 'r') as f:
+                  content = f.read()
+
+              existing = re.search(r'WFVIEW_VERSION=\\\\\"([^\\]+)', content)
+              base = existing.group(1) if existing else '0.0'
               version = f"{base}-{short}"
+
+          print(f"Version will be: {version}")
 
           with open('wfview/wfview.pro', 'r') as f:
               content = f.read()
 
-          # Show the actual line for debugging
-          for line in content.splitlines():
-              if 'WFVIEW_VERSION' in line:
-                  print(f"Found line: {repr(line)}")
-
           content = re.sub(
-              r'WFVIEW_VERSION=\\\\\\\"[^\\]*\\\\\\\"',
-              f'WFVIEW_VERSION=\\\\\\"{version}\\\\\\"',
+              r'WFVIEW_VERSION=\\\\\"[^\\]*\\\\\"',
+              f'WFVIEW_VERSION=\\\\\\\"{version}\\\\\\\"',
               content
           )
+
           with open('wfview/wfview.pro', 'w') as f:
               f.write(content)
-          print(f"Updated version to {version}")
 
+          # Verify
+          with open('wfview/wfview.pro', 'r') as f:
+              for line in f:
+                  if 'WFVIEW_VERSION' in line:
+                      print(f"Result: {repr(line.strip())}")
+                      
       - name: Build wfview
         shell: cmd
         working-directory: wfview
@@ -427,45 +419,37 @@ jobs:
           if ref.startswith('refs/tags/'):
               version = ref.replace('refs/tags/', '').lstrip('v')
           else:
-              # Read the file and debug the content
-              with open('wfview/wfview.pro', 'r') as f:
-                  content = f.read()
-
-              # Find existing version
-              existing = re.search(r'WFVIEW_VERSION=\\\\"([^\\]+)\\\\"', content)
-              if not existing:
-                  existing = re.search(r'WFVIEW_VERSION=\\"([^\\]+)\\"', content)
-              if not existing:
-                  existing = re.search(r'WFVIEW_VERSION="([^"]+)"', content)
-
-              print(f"Existing match: {existing}")
-              if existing:
-                  print(f"Existing version: {existing.group(1)}")
-
               short = subprocess.check_output(
                   ['git', '-C', 'wfview', 'rev-parse', '--short', 'HEAD'],
                   text=True
               ).strip()
 
-              base = existing.group(1) if existing else 'dev'
+              with open('wfview/wfview.pro', 'r') as f:
+                  content = f.read()
+
+              existing = re.search(r'WFVIEW_VERSION=\\\\\"([^\\]+)', content)
+              base = existing.group(1) if existing else '0.0'
               version = f"{base}-{short}"
+
+          print(f"Version will be: {version}")
 
           with open('wfview/wfview.pro', 'r') as f:
               content = f.read()
 
-          # Show the actual line for debugging
-          for line in content.splitlines():
-              if 'WFVIEW_VERSION' in line:
-                  print(f"Found line: {repr(line)}")
-
           content = re.sub(
-              r'WFVIEW_VERSION=\\\\\\\"[^\\]*\\\\\\\"',
-              f'WFVIEW_VERSION=\\\\\\"{version}\\\\\\"',
+              r'WFVIEW_VERSION=\\\\\"[^\\]*\\\\\"',
+              f'WFVIEW_VERSION=\\\\\\\"{version}\\\\\\\"',
               content
           )
+
           with open('wfview/wfview.pro', 'w') as f:
               f.write(content)
-          print(f"Updated version to {version}") 
+
+          # Verify
+          with open('wfview/wfview.pro', 'r') as f:
+              for line in f:
+                  if 'WFVIEW_VERSION' in line:
+                      print(f"Result: {repr(line.strip())}")
           
       - name: Build wfview
         shell: cmd
