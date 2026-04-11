@@ -149,6 +149,11 @@ jobs:
           if not exist windows\Release mkdir windows\Release
           copy /y build\src\windows\Release\hidapi.dll windows\Release\
           copy /y build\src\windows\Release\hidapi.lib windows\Release\
+      
+      - name: Patch Opus output name
+        shell: bash
+        run: |
+          echo "set_target_properties(opus PROPERTIES OUTPUT_NAME opus-0)" >> opus/CMakeLists.txt
 
       - name: Build Opus
         shell: cmd
@@ -160,8 +165,8 @@ jobs:
             -DBUILD_SHARED_LIBS=ON
           cmake --build build --config Release
           mkdir win32\VS2015\win32\ReleaseDLL
-          copy build\Release\opus.dll win32\VS2015\win32\ReleaseDLL\opus-0.dll
-          copy build\Release\opus.lib win32\VS2015\win32\ReleaseDLL\opus.lib
+          copy build\Release\opus-0.dll win32\VS2015\win32\ReleaseDLL\opus-0.dll
+          copy build\Release\opus-0.lib win32\VS2015\win32\ReleaseDLL\opus.lib
 
       - name: Update version from tag or commit
         shell: python
@@ -172,21 +177,40 @@ jobs:
           if ref.startswith('refs/tags/'):
               version = ref.replace('refs/tags/', '').lstrip('v')
           else:
-              version = subprocess.check_output(
+              # Read the file and debug the content
+              with open('wfview/wfview.pro', 'r') as f:
+                  content = f.read()
+
+              # Find existing version
+              existing = re.search(r'WFVIEW_VERSION=\\\\"([^\\]+)\\\\"', content)
+              if not existing:
+                  existing = re.search(r'WFVIEW_VERSION=\\"([^\\]+)\\"', content)
+              if not existing:
+                  existing = re.search(r'WFVIEW_VERSION="([^"]+)"', content)
+
+              print(f"Existing match: {existing}")
+              if existing:
+                  print(f"Existing version: {existing.group(1)}")
+
+              short = subprocess.check_output(
                   ['git', '-C', 'wfview', 'rev-parse', '--short', 'HEAD'],
                   text=True
               ).strip()
-              # Prepend existing version for clarity e.g. "2.21-abc1234"
-              with open('wfview/wfview.pro', 'r') as f:
-                  existing = re.search(r'WFVIEW_VERSION=\\\"([^\\]*)\\\"', f.read())
-              if existing:
-                  version = f"{existing.group(1)}-{version}"
+
+              base = existing.group(1) if existing else 'dev'
+              version = f"{base}-{short}"
 
           with open('wfview/wfview.pro', 'r') as f:
               content = f.read()
+
+          # Show the actual line for debugging
+          for line in content.splitlines():
+              if 'WFVIEW_VERSION' in line:
+                  print(f"Found line: {repr(line)}")
+
           content = re.sub(
-              r'WFVIEW_VERSION=\\\"[^\\]*\\\"',
-              f'WFVIEW_VERSION=\\\\"{version}\\\\"',
+              r'WFVIEW_VERSION=\\\\\\\"[^\\]*\\\\\\\"',
+              f'WFVIEW_VERSION=\\\\\\"{version}\\\\\\"',
               content
           )
           with open('wfview/wfview.pro', 'w') as f:
@@ -374,7 +398,12 @@ jobs:
           mkdir windows\X64\Release
           copy build\src\windows\Release\hidapi.dll windows\X64\Release\
           copy build\src\windows\Release\hidapi.lib windows\X64\Release\
-          
+
+      - name: Patch Opus output name
+        shell: bash
+        run: |
+          echo "set_target_properties(opus PROPERTIES OUTPUT_NAME opus-0)" >> opus/CMakeLists.txt
+
       - name: Build Opus
         shell: cmd
         working-directory: ${{ github.workspace }}\opus
@@ -386,8 +415,8 @@ jobs:
           cmake --build build --config Release
 
           mkdir win32\VS2015\x64\ReleaseDLL
-          copy build\Release\opus.dll win32\VS2015\x64\ReleaseDLL\opus-0.dll
-          copy build\Release\opus.lib win32\VS2015\x64\ReleaseDLL\opus.lib
+          copy build\Release\opus-0.dll win32\VS2015\x64\ReleaseDLL\opus-0.dll
+          copy build\Release\opus-0.lib win32\VS2015\x64\ReleaseDLL\opus.lib
 
       - name: Update version from tag or commit
         shell: python
@@ -398,26 +427,45 @@ jobs:
           if ref.startswith('refs/tags/'):
               version = ref.replace('refs/tags/', '').lstrip('v')
           else:
-              version = subprocess.check_output(
+              # Read the file and debug the content
+              with open('wfview/wfview.pro', 'r') as f:
+                  content = f.read()
+
+              # Find existing version
+              existing = re.search(r'WFVIEW_VERSION=\\\\"([^\\]+)\\\\"', content)
+              if not existing:
+                  existing = re.search(r'WFVIEW_VERSION=\\"([^\\]+)\\"', content)
+              if not existing:
+                  existing = re.search(r'WFVIEW_VERSION="([^"]+)"', content)
+
+              print(f"Existing match: {existing}")
+              if existing:
+                  print(f"Existing version: {existing.group(1)}")
+
+              short = subprocess.check_output(
                   ['git', '-C', 'wfview', 'rev-parse', '--short', 'HEAD'],
                   text=True
               ).strip()
-              # Prepend existing version for clarity e.g. "2.21-abc1234"
-              with open('wfview/wfview.pro', 'r') as f:
-                  existing = re.search(r'WFVIEW_VERSION=\\\"([^\\]*)\\\"', f.read())
-              if existing:
-                  version = f"{existing.group(1)}-{version}"
+
+              base = existing.group(1) if existing else 'dev'
+              version = f"{base}-{short}"
 
           with open('wfview/wfview.pro', 'r') as f:
               content = f.read()
+
+          # Show the actual line for debugging
+          for line in content.splitlines():
+              if 'WFVIEW_VERSION' in line:
+                  print(f"Found line: {repr(line)}")
+
           content = re.sub(
-              r'WFVIEW_VERSION=\\\"[^\\]*\\\"',
-              f'WFVIEW_VERSION=\\\\"{version}\\\\"',
+              r'WFVIEW_VERSION=\\\\\\\"[^\\]*\\\\\\\"',
+              f'WFVIEW_VERSION=\\\\\\"{version}\\\\\\"',
               content
           )
           with open('wfview/wfview.pro', 'w') as f:
               f.write(content)
-          print(f"Updated version to {version}")
+          print(f"Updated version to {version}") 
           
       - name: Build wfview
         shell: cmd
