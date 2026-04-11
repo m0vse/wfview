@@ -274,7 +274,7 @@ jobs:
             --offline-only `
             -c wfview\installer\config\config.xml `
             -p wfview\installer\packages `
-            "wfview-$VERSION-windows-x86-setup.exe"
+            "wfview-windows-x86-setup.exe"
 
       - name: Upload installer
         if: startsWith(github.ref, 'refs/tags/v')
@@ -531,7 +531,7 @@ jobs:
             --offline-only `
             -c wfview\installer\config\config.xml `
             -p wfview\installer\packages `
-            "wfview-$VERSION-windows-x64-setup.exe"
+            "wfview-windows-x64-setup.exe"
             
       - name: Upload installer
         if: startsWith(github.ref, 'refs/tags/v')
