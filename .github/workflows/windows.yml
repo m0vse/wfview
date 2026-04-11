@@ -59,9 +59,12 @@ jobs:
       - name: Write QCustomPlot pro file
         shell: bash
         run: |
-          mkdir -p ../qcustomplot/qcustomplot-sharedlib/build
+          echo "=== QCustomPlot directory structure ==="
+          find qcustomplot -maxdepth 2 -type f | sort
 
-          cat > ../qcustomplot/qcustomplot-sharedlib/build/qcustomplot-sharedlib.pro << 'EOF'
+          mkdir -p qcustomplot/qcustomplot-sharedlib/build
+
+          cat > qcustomplot/qcustomplot-sharedlib/build/qcustomplot-sharedlib.pro << 'EOF'
           TEMPLATE = lib
           TARGET = qcustomplot
           QT += widgets printsupport
@@ -71,8 +74,8 @@ jobs:
           HEADERS += ../../qcustomplot.h
           EOF
 
-          cp ../qcustomplot/qcustomplot.h ../qcustomplot/qcustomplot-sharedlib/build/
-
+          cp qcustomplot/qcustomplot.h qcustomplot/qcustomplot-sharedlib/build/
+          
       - name: Build QCustomPlot
         shell: cmd
         working-directory: ..\qcustomplot\qcustomplot-sharedlib\build
