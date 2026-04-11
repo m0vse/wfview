@@ -57,12 +57,25 @@ jobs:
           VERSION=$(grep 'WFVIEW_VERSION' wfview/wfview.pro | grep -oE '[0-9]+\.[0-9]+')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Build qcustomplot
-        shell: cmd
-        working-directory: qcustomplot/qcustomplot-sharedlib
+      - name: Build QCustomPlot
+        shell: bash
         run: |
+          mkdir -p ../qcustomplot/qcustomplot-sharedlib/build
+          cd ../qcustomplot/qcustomplot-sharedlib/build
+
+          cat > qcustomplot-sharedlib.pro << 'EOF'
+          TEMPLATE = lib
+          TARGET = qcustomplot
+          QT += widgets printsupport
+          CONFIG += release shared
+          DEFINES += QCUSTOMPLOT_COMPILE_LIBRARY
+          SOURCES += ../../qcustomplot.cpp
+          HEADERS += ../../qcustomplot.h
+          EOF
+
           qmake qcustomplot-sharedlib.pro CONFIG+=release
           nmake
+          cp ../../qcustomplot.h .
 
       - name: Build wfview
         shell: cmd
