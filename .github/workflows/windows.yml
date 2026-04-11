@@ -60,17 +60,22 @@ jobs:
           target: desktop
           arch: win32_msvc2019
 
-      - name: Check available IFW versions
-        shell: bash
+      - name: Install Qt IFW 4.3.0 (x86)
+        shell: pwsh
         run: |
-          pip install aqtinstall
-          aqt list-tool windows desktop tools_ifw
-          
-      - name: Install Qt IFW 4.3.0
-        shell: cmd
-        run: |
-          aqt tool windows tools_ifw 4.3.0 qt.tools.ifw.43 --outputdir C:\QtIFW
-          echo C:\QtIFW\Tools\QtInstallerFramework\4.3\bin >> %GITHUB_PATH%
+          Invoke-WebRequest `
+            -Uri "https://download.qt.io/archive/qt-installer-framework/4.3.0/QtInstallerFramework-windows-x86-4.3.0.exe" `
+            -OutFile QtIFW-4.3.0.exe
+
+          Start-Process -Wait -FilePath "QtIFW-4.3.0.exe" -ArgumentList `
+            "--accept-licenses", `
+            "--accept-obligations", `
+            "--confirm-command", `
+            "--default-answer", `
+            "install", `
+            "--root", "C:\QtIFW43"
+
+          echo "C:\QtIFW43\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           
       - name: Set up MSVC (x86)
         uses: ilammy/msvc-dev-cmd@v1
