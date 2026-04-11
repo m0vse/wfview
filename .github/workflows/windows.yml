@@ -1,4 +1,4 @@
-name: Windows x64 build
+name: Windows build
 
 permissions:
   contents: write
@@ -8,7 +8,212 @@ on:
     branches: [ master ]
 
 jobs:
-  build-windows:
+  build-windows-x86:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout wfview
+        uses: actions/checkout@v4
+        with:
+          path: wfview
+          fetch-depth: 0
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        id: cache-deps
+        with:
+          path: |
+            portaudio
+            opus
+            hidapi
+            rtaudio
+            r8brain-free-src
+            eigen
+            qcustomplot
+          key: windows-x86-deps-${{ hashFiles('wfview/wfview.pro') }}
+
+      - name: Checkout dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          git clone --depth=1 https://github.com/PortAudio/portaudio.git portaudio
+          git clone --depth=1 https://github.com/xiph/opus.git opus
+          git clone --depth=1 https://github.com/libusb/hidapi.git hidapi
+          git clone --depth=1 https://github.com/thestk/rtaudio.git rtaudio
+          git clone --depth=1 https://github.com/avaneev/r8brain-free-src.git r8brain-free-src
+          git clone --depth=1 --branch 5.0.1 https://gitlab.com/libeigen/eigen.git eigen
+
+      - name: Download QCustomPlot
+        shell: bash
+        run: |
+          mkdir -p qcustomplot
+          curl -L "https://www.qcustomplot.com/release/2.1.1/QCustomPlot.tar.gz" \
+            -o qcustomplot.tar.gz
+          tar -xzf qcustomplot.tar.gz -C qcustomplot --strip-components=1
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: 5.15.2
+          cache: true
+          host: windows
+          target: desktop
+          arch: win32_msvc2019
+          modules: qtserialport qtwebsockets qtmultimedia
+
+      - name: Check available IFW versions
+        shell: bash
+        run: |
+          pip install aqtinstall
+          aqt list-tool windows tools_ifw
+          
+      - name: Install Qt IFW 4.3.0
+        shell: cmd
+        run: |
+          pip install aqtinstall
+          aqt tool windows tools_ifw 4.3.0 qt.tools.ifw.43 --outputdir C:\QtIFW
+          echo C:\QtIFW\Tools\QtInstallerFramework\4.3\bin >> %GITHUB_PATH%
+          
+      - name: Set up MSVC (x86)
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+
+      - name: Get version
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(grep 'WFVIEW_VERSION' wfview/wfview.pro | grep -oE '[0-9]+\.[0-9]+')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Install jom
+        uses: nick-fields/retry@v2
+        with:
+          timeout_minutes: 5
+          max_attempts: 3
+          command: choco install jom -y
+
+      - name: Write QCustomPlot pro file
+        shell: bash
+        run: |
+          mkdir -p qcustomplot/win32
+          cat > qcustomplot/qcustomplot-sharedlib.pro << 'EOF'
+          TEMPLATE = lib
+          TARGET = qcustomplot2
+          DESTDIR = win32
+          QT += widgets printsupport
+          CONFIG += release shared
+          DEFINES += QCUSTOMPLOT_COMPILE_LIBRARY
+          SOURCES += qcustomplot.cpp
+          HEADERS += qcustomplot.h
+          EOF
+
+      - name: Build QCustomPlot
+        shell: cmd
+        working-directory: ${{ github.workspace }}\qcustomplot
+        run: |
+          qmake qcustomplot-sharedlib.pro CONFIG+=release
+          jom -j %NUMBER_OF_PROCESSORS%
+
+      - name: Build PortAudio
+        shell: cmd
+        working-directory: ${{ github.workspace }}\portaudio
+        run: |
+          cmake -B build ^
+            -G "Visual Studio 16 2019" ^
+            -A Win32 ^
+            -DPA_BUILD_SHARED=ON ^
+            -DPA_BUILD_STATIC=OFF
+          cmake --build build --config Release
+          mkdir msvc\Win32\Release
+          copy build\Release\portaudio.dll msvc\Win32\Release\portaudio_x86.dll
+          copy build\Release\portaudio.lib msvc\Win32\Release\portaudio_x86.lib
+
+      - name: Build HIDAPI
+        shell: cmd
+        working-directory: ${{ github.workspace }}\hidapi
+        run: |
+          cmake -B build ^
+            -G "Visual Studio 16 2019" ^
+            -A Win32 ^
+            -DBUILD_SHARED_LIBS=ON
+          cmake --build build --config Release
+          mkdir windows\Debug
+          copy build\src\windows\Release\hidapi.dll windows\Debug\
+          copy build\src\windows\Release\hidapi.lib windows\Debug\
+
+      - name: Build Opus
+        shell: cmd
+        working-directory: ${{ github.workspace }}\opus
+        run: |
+          cmake -B build ^
+            -G "Visual Studio 16 2019" ^
+            -A Win32 ^
+            -DBUILD_SHARED_LIBS=ON
+          cmake --build build --config Release
+          mkdir win32\VS2015\win32\ReleaseDLL
+          copy build\Release\opus.dll win32\VS2015\win32\ReleaseDLL\opus-0.dll
+          copy build\Release\opus.lib win32\VS2015\win32\ReleaseDLL\opus.lib
+
+      - name: Create LibFT4222 stub
+        shell: bash
+        run: |
+          mkdir -p LibFT4222-v1.4.8/imports/LibFT4222/dll/i386
+
+      - name: Build wfview
+        shell: cmd
+        working-directory: wfview
+        run: |
+          qmake wfview.pro CONFIG+=release
+          jom -j %NUMBER_OF_PROCESSORS%
+
+      - name: Deploy Qt dependencies
+        shell: cmd
+        run: |
+          windeployqt ^
+            --release ^
+            --printsupport ^
+            --no-system-d3d-compiler ^
+            wfview\wfview-release\wfview.exe
+
+      - name: Build Qt Installer
+        shell: pwsh
+        run: |
+          $VERSION = "${{ steps.version.outputs.version }}"
+          $DATE = Get-Date -Format 'yyyy-MM-dd'
+          $PKG_DIR = "wfview\installer\packages\org.wfview.wfview"
+
+          New-Item -ItemType Directory -Force -Path "$PKG_DIR\data"
+          Copy-Item -Recurse -Force "wfview\wfview-release\*" "$PKG_DIR\data\"
+
+          Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x86.exe" `
+            -OutFile "$PKG_DIR\data\vc_redist.x64.exe"
+
+          (Get-Content "wfview\installer\config\config.xml") `
+            -replace '<Version>.*</Version>', "<Version>$VERSION</Version>" `
+            -replace '<Title>.*</Title>', "<Title>Welcome to the wfview v$VERSION (x86) installer</Title>" `
+            -replace 'wfview \(x64\)', 'wfview (x86)' |
+            Set-Content "wfview\installer\config\config.xml"
+
+          (Get-Content "$PKG_DIR\meta\package.xml") `
+            -replace '<Version>.*</Version>', "<Version>$VERSION</Version>" `
+            -replace '<ReleaseDate>.*</ReleaseDate>', "<ReleaseDate>$DATE</ReleaseDate>" `
+            -replace 'wfview \(x64\)', 'wfview (x86)' |
+            Set-Content "$PKG_DIR\meta\package.xml"
+
+          binarycreator `
+            --offline-only `
+            -c wfview\installer\config\config.xml `
+            -p wfview\installer\packages `
+            "wfview-$VERSION-windows-x86-setup.exe"
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: wfview-windows-x86-installer
+          path: wfview-${{ steps.version.outputs.version }}-windows-x86-setup.exe
+
+  build-windows-x64:
     runs-on: windows-latest
 
     steps:
