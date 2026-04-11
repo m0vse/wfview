@@ -64,12 +64,11 @@ jobs:
         shell: bash
         run: |
           pip install aqtinstall
-          aqt list-tool windows tools_ifw
+          aqt list-tool windows desktop tools_ifw
           
       - name: Install Qt IFW 4.3.0
         shell: cmd
         run: |
-          pip install aqtinstall
           aqt tool windows tools_ifw 4.3.0 qt.tools.ifw.43 --outputdir C:\QtIFW
           echo C:\QtIFW\Tools\QtInstallerFramework\4.3\bin >> %GITHUB_PATH%
           
@@ -114,6 +113,11 @@ jobs:
           qmake qcustomplot-sharedlib.pro CONFIG+=release
           jom -j %NUMBER_OF_PROCESSORS%
 
+      - name: Patch PortAudio output name
+        shell: bash
+        run: |
+          echo "set_target_properties(portaudio PROPERTIES OUTPUT_NAME portaudio_x86)" >> portaudio/CMakeLists.txt
+      
       - name: Build PortAudio
         shell: cmd
         working-directory: ${{ github.workspace }}\portaudio
@@ -122,9 +126,7 @@ jobs:
             -G "Visual Studio 16 2019" ^
             -A Win32 ^
             -DPA_BUILD_SHARED=ON ^
-            -DPA_BUILD_STATIC=OFF ^
-            -DCMAKE_SHARED_LIBRARY_PREFIX="" ^
-            -DPA_OUTPUT_NAME=portaudio_x86
+            -DPA_BUILD_STATIC=OFF 
           cmake --build build --config Release
           mkdir msvc\Win32\Release
           copy build\Release\portaudio_x86.dll msvc\Win32\Release\portaudio_x86.dll
@@ -155,11 +157,6 @@ jobs:
           mkdir win32\VS2015\win32\ReleaseDLL
           copy build\Release\opus.dll win32\VS2015\win32\ReleaseDLL\opus-0.dll
           copy build\Release\opus.lib win32\VS2015\win32\ReleaseDLL\opus.lib
-
-      - name: Create LibFT4222 stub
-        shell: bash
-        run: |
-          mkdir -p LibFT4222-v1.4.8/imports/LibFT4222/dll/i386
 
       - name: Build wfview
         shell: cmd
@@ -309,6 +306,11 @@ jobs:
           qmake qcustomplot-sharedlib.pro CONFIG+=release
           jom -j %NUMBER_OF_PROCESSORS%
 
+      - name: Patch PortAudio output name
+        shell: bash
+        run: |
+          echo "set_target_properties(portaudio PROPERTIES OUTPUT_NAME portaudio_x64)" >> portaudio/CMakeLists.txt
+          
       - name: Build PortAudio
         shell: cmd
         working-directory: ${{ github.workspace }}\portaudio
@@ -317,9 +319,7 @@ jobs:
             -G "Visual Studio 17 2022" ^
             -A x64 ^
             -DPA_BUILD_SHARED=ON ^
-            -DPA_BUILD_STATIC=OFF ^
-            -DCMAKE_SHARED_LIBRARY_PREFIX="" ^
-            -DPA_OUTPUT_NAME=portaudio_x64
+            -DPA_BUILD_STATIC=OFF 
           cmake --build build --config Release
 
           mkdir msvc\X64\Release
@@ -353,11 +353,6 @@ jobs:
           mkdir win32\VS2015\x64\ReleaseDLL
           copy build\Release\opus.dll win32\VS2015\x64\ReleaseDLL\opus-0.dll
           copy build\Release\opus.lib win32\VS2015\x64\ReleaseDLL\opus.lib
-
-      - name: Create LibFT4222 stub
-        shell: bash
-        run: |
-          mkdir -p LibFT4222-v1.4.8/imports/LibFT4222/dll/amd64
           
       - name: Build wfview
         shell: cmd
