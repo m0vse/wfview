@@ -163,6 +163,7 @@ jobs:
         run: |
           windeployqt ^
             --release ^
+            --printsupport ^
             --no-system-d3d-compiler ^
             wfview\wfview-release\wfview.exe
             
@@ -170,61 +171,35 @@ jobs:
         shell: pwsh
         run: |
           $VERSION = "${{ steps.version.outputs.version }}"
-          $PKG_DIR = "installer\packages\org.wfview.wfview"
-
-          New-Item -ItemType Directory -Force -Path "installer\config"
-          New-Item -ItemType Directory -Force -Path "$PKG_DIR\data"
-          New-Item -ItemType Directory -Force -Path "$PKG_DIR\meta"
+          $DATE = Get-Date -Format 'yyyy-MM-dd'
+          $PKG_DIR = "wfview\installer\packages\org.wfview.wfview"
 
           # Copy app files into package data
+          New-Item -ItemType Directory -Force -Path "$PKG_DIR\data"
           Copy-Item -Recurse -Force "wfview\wfview-release\*" "$PKG_DIR\data\"
 
-          # config.xml
-          @"
-          <?xml version="1.0" encoding="UTF-8"?>
-          <Installer>
-            <Name>wfview</Name>
-            <Version>$VERSION</Version>
-            <Title>wfview</Title>
-            <Publisher>wfview</Publisher>
-            <StartMenuDir>wfview</StartMenuDir>
-            <TargetDir>@ApplicationsDir@/wfview</TargetDir>
-            <MaintenanceToolName>wfviewMaintenanceTool</MaintenanceToolName>
-          </Installer>
-          "@ | Set-Content "installer\config\config.xml"
+          # Download VC redist into package data so installscript.qs can run it
+          Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" `
+            -OutFile "$PKG_DIR\data\vc_redist.x64.exe"
 
-          # package.xml
-          @"
-          <?xml version="1.0" encoding="UTF-8"?>
-          <Package>
-            <DisplayName>wfview</DisplayName>
-            <Description>Open Source interface for Icom transceivers</Description>
-            <Version>$VERSION</Version>
-            <ReleaseDate>$(Get-Date -Format 'yyyy-MM-dd')</ReleaseDate>
-            <Default>true</Default>
-            <Script>installscript.qs</Script>
-          </Package>
-          "@ | Set-Content "$PKG_DIR\meta\package.xml"
+          # Inject version and date into config.xml and package.xml
+          (Get-Content "wfview\installer\config\config.xml") `
+            -replace '<Version>.*</Version>', "<Version>$VERSION</Version>" `
+            -replace '<Title>.*</Title>', "<Title>Welcome to the wfview v$VERSION (x64) installer</Title>" |
+            Set-Content "wfview\installer\config\config.xml"
 
-          # installscript.qs
-          @"
-          function Component() {}
-          Component.prototype.createOperations = function() {
-            component.createOperations();
-            component.addOperation("CreateShortcut",
-              "@TargetDir@/wfview.exe",
-              "@StartMenuDir@/wfview.lnk",
-              "workingDirectory=@TargetDir@");
-          }
-          "@ | Set-Content "$PKG_DIR\meta\installscript.qs"
+          (Get-Content "$PKG_DIR\meta\package.xml") `
+            -replace '<Version>.*</Version>', "<Version>$VERSION</Version>" `
+            -replace '<ReleaseDate>.*</ReleaseDate>', "<ReleaseDate>$DATE</ReleaseDate>" |
+            Set-Content "$PKG_DIR\meta\package.xml"
 
           # Build installer
           binarycreator `
             --offline-only `
-            -c installer\config\config.xml `
-            -p installer\packages `
+            -c wfview\installer\config\config.xml `
+            -p wfview\installer\packages `
             "wfview-$VERSION-windows-x64-setup.exe"
-
+            
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
