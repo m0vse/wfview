@@ -21,20 +21,19 @@ jobs:
       - name: Checkout dependencies
         shell: bash
         run: |
-          git clone --depth=1 https://github.com/PortAudio/portaudio.git ../portaudio
-          git clone --depth=1 https://github.com/xiph/opus.git ../opus
-          git clone --depth=1 https://github.com/libusb/hidapi.git ../hidapi
-          git clone --depth=1 https://github.com/thestk/rtaudio.git ../rtaudio
-          git clone --depth=1 https://github.com/avaneev/r8brain-free-src.git ../r8brain-free-src
-          git clone --depth=1 --branch 5.0.1 https://gitlab.com/libeigen/eigen.git ../eigen
-
+          git clone --depth=1 https://github.com/PortAudio/portaudio.git portaudio
+          git clone --depth=1 https://github.com/xiph/opus.git opus
+          git clone --depth=1 https://github.com/libusb/hidapi.git hidapi
+          git clone --depth=1 https://github.com/thestk/rtaudio.git rtaudio
+          git clone --depth=1 https://github.com/avaneev/r8brain-free-src.git r8brain-free-src
+          git clone --depth=1 --branch 5.0.1 https://gitlab.com/libeigen/eigen.git eigen
       - name: Download QCustomPlot
         shell: bash
         run: |
-          mkdir -p ../qcustomplot
+          mkdir -p qcustomplot
           curl -L "https://www.qcustomplot.com/release/2.1.1/QCustomPlot.tar.gz" \
             -o qcustomplot.tar.gz
-          tar -xzf qcustomplot.tar.gz -C ../qcustomplot --strip-components=1
+          tar -xzf qcustomplot.tar.gz -C qcustomplot --strip-components=1
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
