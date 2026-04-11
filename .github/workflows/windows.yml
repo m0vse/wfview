@@ -110,14 +110,13 @@ jobs:
           cmake -B build ^
             -G "Visual Studio 17 2022" ^
             -A x64 ^
-            -DCMAKE_BUILD_TYPE=Release ^
             -DPA_BUILD_SHARED=ON ^
             -DPA_BUILD_STATIC=OFF
           cmake --build build --config Release
 
-          mkdir -p msvc\X64\Release
-          copy build\Release\portaudio_x64.dll msvc\X64\Release\
-          copy build\Release\portaudio_x64.lib msvc\X64\Release\
+          mkdir msvc\X64\Release
+          copy build\Release\portaudio.dll msvc\X64\Release\portaudio_x64.dll
+          copy build\Release\portaudio.lib msvc\X64\Release\portaudio_x64.lib
           
       - name: Build wfview
         shell: cmd
