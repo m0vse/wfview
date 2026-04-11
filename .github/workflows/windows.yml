@@ -1,0 +1,139 @@
+name: Windows x64 build
+
+permissions:
+  contents: write
+
+on: 
+  push:
+    branches: [ master ]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout wfview
+        uses: actions/checkout@v4
+        with:
+          path: wfview
+          fetch-depth: 0
+
+      - name: Checkout dependencies
+        shell: bash
+        run: |
+          git clone https://github.com/EddieRingle/portaudio ../portaudio
+          git clone https://github.com/libopus/opus ../opus
+          git clone https://github.com/libusb/hidapi ../hidapi
+          git clone https://github.com/lammertb/qcustomplot ../qcustomplot
+          git clone https://github.com/thestk/rtaudio ../rtaudio
+          git clone https://gitlab.com/libeigen/eigen ../eigen
+          git clone https://github.com/avaneev/r8brain-free-src ../r8brain-free-src
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: 6.8.1
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          modules: qtserialport qtwebsockets qtmultimedia
+          tools: tools_ifw
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Get version
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(grep 'WFVIEW_VERSION' wfview/wfview.pro | grep -oP '\d+\.\d+')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Build qcustomplot
+        shell: cmd
+        working-directory: qcustomplot/qcustomplot-sharedlib
+        run: |
+          qmake qcustomplot-sharedlib.pro CONFIG+=release
+          nmake
+
+      - name: Build wfview
+        shell: cmd
+        working-directory: wfview
+        run: |
+          qmake wfview.pro CONFIG+=release
+          nmake
+
+      - name: Deploy Qt dependencies
+        shell: cmd
+        run: |
+          windeployqt ^
+            --release ^
+            --no-system-d3d-compiler ^
+            wfview\wfview-release\wfview.exe
+            
+      - name: Build Qt Installer
+        shell: pwsh
+        run: |
+          $VERSION = "${{ steps.version.outputs.version }}"
+          $PKG_DIR = "installer\packages\org.wfview.wfview"
+
+          New-Item -ItemType Directory -Force -Path "installer\config"
+          New-Item -ItemType Directory -Force -Path "$PKG_DIR\data"
+          New-Item -ItemType Directory -Force -Path "$PKG_DIR\meta"
+
+          # Copy app files into package data
+          Copy-Item -Recurse -Force "wfview\wfview-release\*" "$PKG_DIR\data\"
+
+          # config.xml
+          @"
+          <?xml version="1.0" encoding="UTF-8"?>
+          <Installer>
+            <Name>wfview</Name>
+            <Version>$VERSION</Version>
+            <Title>wfview</Title>
+            <Publisher>wfview</Publisher>
+            <StartMenuDir>wfview</StartMenuDir>
+            <TargetDir>@ApplicationsDir@/wfview</TargetDir>
+            <MaintenanceToolName>wfviewMaintenanceTool</MaintenanceToolName>
+          </Installer>
+          "@ | Set-Content "installer\config\config.xml"
+
+          # package.xml
+          @"
+          <?xml version="1.0" encoding="UTF-8"?>
+          <Package>
+            <DisplayName>wfview</DisplayName>
+            <Description>Open Source interface for Icom transceivers</Description>
+            <Version>$VERSION</Version>
+            <ReleaseDate>$(Get-Date -Format 'yyyy-MM-dd')</ReleaseDate>
+            <Default>true</Default>
+            <Script>installscript.qs</Script>
+          </Package>
+          "@ | Set-Content "$PKG_DIR\meta\package.xml"
+
+          # installscript.qs
+          @"
+          function Component() {}
+          Component.prototype.createOperations = function() {
+            component.createOperations();
+            component.addOperation("CreateShortcut",
+              "@TargetDir@/wfview.exe",
+              "@StartMenuDir@/wfview.lnk",
+              "workingDirectory=@TargetDir@");
+          }
+          "@ | Set-Content "$PKG_DIR\meta\installscript.qs"
+
+          # Build installer
+          binarycreator `
+            --offline-only `
+            -c installer\config\config.xml `
+            -p installer\packages `
+            "wfview-$VERSION-windows-x64-setup.exe"
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: wfview-windows-installer
+          path: wfview-${{ steps.version.outputs.version }}-windows-x64-setup.exe
