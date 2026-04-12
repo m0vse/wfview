@@ -42,11 +42,14 @@
      typedef unsigned short spx_uint16_t;
 #  else
      /* MSVC/Borland */
+#ifndef SPX_TYPES_DEFINED
+#define SPX_TYPES_DEFINED
 #    include <stdint.h>
      typedef __int32 spx_int32_t;
      typedef unsigned __int32 spx_uint32_t;
      typedef __int16 spx_int16_t;
      typedef unsigned __int16 spx_uint16_t;
+#  endif
 #  endif
 
 #elif defined(__MACOS__)
