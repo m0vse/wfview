@@ -9,12 +9,537 @@ permissions:
 
 on:
   push:
-    branches: ['**']
+    tags:        
+      - '*'
+    #branches: ['**']
   workflow_dispatch:
-  schedule:
-    - cron: '0 6 * * 1'
 
 jobs:
+
+  # ═══════════════════════════════════════════════════════════════════
+  #  Windows 32bit Qt5 Build
+  # ═══════════════════════════════════════════════════════════════════
+  build-windows-x86:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout wfview
+        uses: actions/checkout@v4
+        with:
+          path: wfview
+          fetch-depth: 0
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        id: cache-deps
+        with:
+          path: |
+            portaudio
+            opus
+            hidapi
+            rtaudio
+            r8brain-free-src
+            eigen
+            qcustomplot
+          key: windows-x86-deps-${{ hashFiles('wfview/wfview.pro') }}
+
+      - name: Checkout dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          git clone --depth=1 https://github.com/PortAudio/portaudio.git portaudio
+          git clone --depth=1 https://github.com/xiph/opus.git opus
+          git clone --depth=1 https://github.com/libusb/hidapi.git hidapi
+          git clone --depth=1 https://github.com/thestk/rtaudio.git rtaudio
+          git clone --depth=1 https://github.com/avaneev/r8brain-free-src.git r8brain-free-src
+          git clone --depth=1 --branch 5.0.1 https://gitlab.com/libeigen/eigen.git eigen
+
+      - name: Download QCustomPlot
+        shell: bash
+        run: |
+          mkdir -p qcustomplot
+          curl -L "https://www.qcustomplot.com/release/2.1.1/QCustomPlot.tar.gz" \
+            -o qcustomplot.tar.gz
+          tar -xzf qcustomplot.tar.gz -C qcustomplot --strip-components=1
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: 5.15.2
+          cache: true
+          host: windows
+          target: desktop
+          arch: win32_msvc2019
+
+      - name: Install Qt IFW 4.3.0 (x86)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest `
+            -Uri "https://download.qt.io/archive/qt-installer-framework/4.3.0/QtInstallerFramework-windows-x86-4.3.0.exe" `
+            -OutFile QtIFW-4.3.0.exe
+
+          Start-Process -Wait -FilePath "QtIFW-4.3.0.exe" -ArgumentList `
+            "--accept-licenses", `
+            "--accept-obligations", `
+            "--confirm-command", `
+            "--default-answer", `
+            "install", `
+            "--root", "C:\QtIFW43"
+
+          echo "C:\QtIFW43\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          
+      - name: Set up MSVC (x86)
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+
+      - name: Get and update version
+        id: version
+        shell: python
+        run: |
+          import os, re, subprocess
+
+          ref = os.environ['GITHUB_REF']
+          short = subprocess.check_output(
+              ['git', '-C', 'wfview', 'rev-parse', '--short', 'HEAD'],
+              text=True
+          ).strip()
+          bundle_version = subprocess.check_output(
+              ['git', '-C', 'wfview', 'rev-list', '--count', 'HEAD'],
+              text=True
+          ).strip()
+
+          if ref.startswith('refs/tags/'):
+              version = ref.replace('refs/tags/', '').lstrip('v')
+          else:
+              with open('wfview/wfview.pro', 'r') as f:
+                  content = f.read()
+
+              for line in content.splitlines():
+                  if 'WFVIEW_VERSION' in line:
+                      m = re.search(r'(\d+\.\d+)', line)
+                      base = m.group(1) if m else '0.0'
+                      break
+
+              version = f"{base}-{short}"
+
+          print(f"Version will be: {version}")
+
+          # Update the .pro file
+          with open('wfview/wfview.pro', 'r') as f:
+              content = f.read()
+
+          content = re.sub(
+              r'(WFVIEW_VERSION=(?:\\+\")+)\d+\.\d+((?:\\+\")+)',
+              f'\\g<1>{version}\\g<2>',
+              content
+          )
+
+          with open('wfview/wfview.pro', 'w') as f:
+              f.write(content)
+
+          with open('wfview/wfview.pro', 'r') as f:
+              for line in f:
+                  if 'WFVIEW_VERSION' in line:
+                      print(f"Result: {repr(line.strip())}")
+
+          # Write outputs
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f"version={version}\n")
+              f.write(f"bundle_version={bundle_version}\n")
+
+      - name: Install jom
+        uses: nick-fields/retry@v2
+        with:
+          timeout_minutes: 5
+          max_attempts: 3
+          command: choco install jom -y
+
+      - name: Write QCustomPlot pro file
+        shell: bash
+        run: |
+          mkdir -p qcustomplot/win32
+          cat > qcustomplot/qcustomplot-sharedlib.pro << 'EOF'
+          TEMPLATE = lib
+          TARGET = qcustomplot2
+          DESTDIR = win32
+          QT += widgets printsupport
+          CONFIG += release shared
+          DEFINES += QCUSTOMPLOT_COMPILE_LIBRARY
+          SOURCES += qcustomplot.cpp
+          HEADERS += qcustomplot.h
+          EOF
+
+      - name: Build QCustomPlot
+        shell: cmd
+        working-directory: ${{ github.workspace }}\qcustomplot
+        run: |
+          qmake qcustomplot-sharedlib.pro CONFIG+=release
+          jom -j %NUMBER_OF_PROCESSORS%
+
+      - name: Patch PortAudio output name
+        shell: bash
+        run: |
+          echo "set_target_properties(portaudio PROPERTIES OUTPUT_NAME portaudio_x86)" >> portaudio/CMakeLists.txt
+      
+      - name: Build PortAudio
+        shell: cmd
+        working-directory: ${{ github.workspace }}\portaudio
+        run: |
+          cmake -B build ^
+            -G "Visual Studio 17 2022" ^
+            -A Win32 ^
+            -DPA_BUILD_SHARED=ON ^
+            -DPA_BUILD_STATIC=OFF 
+          cmake --build build --config Release
+          mkdir msvc\Win32\Release
+          copy build\Release\portaudio_x86.dll msvc\Win32\Release\portaudio_x86.dll
+          copy build\Release\portaudio_x86.lib msvc\Win32\Release\portaudio_x86.lib
+
+      - name: Build HIDAPI
+        shell: cmd
+        working-directory: ${{ github.workspace }}\hidapi
+        run: |
+          cmake -B build ^
+            -G "Visual Studio 17 2022" ^
+            -A Win32 ^
+            -DBUILD_SHARED_LIBS=ON
+          cmake --build build --config Release
+          if not exist windows\Release mkdir windows\Release
+          copy /y build\src\windows\Release\hidapi.dll windows\Release\
+          copy /y build\src\windows\Release\hidapi.lib windows\Release\
+      
+      - name: Patch Opus output name
+        shell: bash
+        run: |
+          echo "set_target_properties(opus PROPERTIES OUTPUT_NAME opus-0)" >> opus/CMakeLists.txt
+
+      - name: Build Opus
+        shell: cmd
+        working-directory: ${{ github.workspace }}\opus
+        run: |
+          cmake -B build ^
+            -G "Visual Studio 17 2022" ^
+            -A Win32 ^
+            -DBUILD_SHARED_LIBS=ON
+          cmake --build build --config Release
+          mkdir win32\VS2015\win32\ReleaseDLL
+          copy build\Release\opus-0.dll win32\VS2015\win32\ReleaseDLL\opus-0.dll
+          copy build\Release\opus-0.lib win32\VS2015\win32\ReleaseDLL\opus.lib
+
+      - name: Build wfview
+        shell: cmd
+        working-directory: wfview
+        run: |
+          qmake wfview.pro CONFIG+=release
+          jom -j %NUMBER_OF_PROCESSORS%
+
+      - name: Deploy Qt dependencies
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: cmd
+        run: |
+          windeployqt ^
+            --release ^
+            --printsupport ^
+            --no-system-d3d-compiler ^
+            wfview\wfview-release\wfview.exe
+
+      - name: Build Qt Installer
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $VERSION = "${{ steps.version.outputs.version }}"
+          $DATE = Get-Date -Format 'yyyy-MM-dd'
+          $PKG_DIR = "wfview\installer\packages\org.wfview.wfview"
+
+          New-Item -ItemType Directory -Force -Path "$PKG_DIR\data"
+          Copy-Item -Recurse -Force "wfview\wfview-release\*" "$PKG_DIR\data\"
+
+          Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x86.exe" `
+            -OutFile "$PKG_DIR\data\vc_redist.x64.exe"
+
+          (Get-Content "wfview\installer\config\config.xml") `
+            -replace '<Version>.*</Version>', "<Version>$VERSION</Version>" `
+            -replace '<Title>.*</Title>', "<Title>Welcome to the wfview v$VERSION (x86) installer</Title>" `
+            -replace 'wfview \(x64\)', 'wfview (x86)' |
+            Set-Content "wfview\installer\config\config.xml"
+
+          (Get-Content "$PKG_DIR\meta\package.xml") `
+            -replace '<Version>.*</Version>', "<Version>$VERSION</Version>" `
+            -replace '<ReleaseDate>.*</ReleaseDate>', "<ReleaseDate>$DATE</ReleaseDate>" `
+            -replace 'wfview \(x64\)', 'wfview (x86)' |
+            Set-Content "$PKG_DIR\meta\package.xml"
+
+          binarycreator `
+            --offline-only `
+            -c wfview\installer\config\config.xml `
+            -p wfview\installer\packages `
+            "wfview-windows-x86-setup.exe"
+
+      - name: Upload installer
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: wfview-windows-x86
+          path: wfview-windows-x86-setup.exe
+
+  # ═══════════════════════════════════════════════════════════════════
+  #  Windows 64bit Qt6 Build
+  # ═══════════════════════════════════════════════════════════════════
+  build-windows-x64:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout wfview
+        uses: actions/checkout@v4
+        with:
+          path: wfview
+          fetch-depth: 0
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        id: cache-deps
+        with:
+          path: |
+            portaudio
+            opus
+            hidapi
+            rtaudio
+            r8brain-free-src
+            eigen
+            qcustomplot
+          key: windows-deps-${{ hashFiles('wfview/wfview.pro') }}
+
+      - name: Checkout dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          git clone --depth=1 https://github.com/PortAudio/portaudio.git portaudio
+          git clone --depth=1 https://github.com/xiph/opus.git opus
+          git clone --depth=1 https://github.com/libusb/hidapi.git hidapi
+          git clone --depth=1 https://github.com/thestk/rtaudio.git rtaudio
+          git clone --depth=1 https://github.com/avaneev/r8brain-free-src.git r8brain-free-src
+          git clone --depth=1 --branch 5.0.1 https://gitlab.com/libeigen/eigen.git eigen
+      - name: Download QCustomPlot
+        shell: bash
+        run: |
+          mkdir -p qcustomplot
+          curl -L "https://www.qcustomplot.com/release/2.1.1/QCustomPlot.tar.gz" \
+            -o qcustomplot.tar.gz
+          tar -xzf qcustomplot.tar.gz -C qcustomplot --strip-components=1
+      
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: 6.8.1
+          cache: true
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          modules: qtserialport qtwebsockets qtmultimedia
+          tools: tools_ifw
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Get and update version
+        id: version
+        shell: python
+        run: |
+          import os, re, subprocess
+
+          ref = os.environ['GITHUB_REF']
+          short = subprocess.check_output(
+              ['git', '-C', 'wfview', 'rev-parse', '--short', 'HEAD'],
+              text=True
+          ).strip()
+          bundle_version = subprocess.check_output(
+              ['git', '-C', 'wfview', 'rev-list', '--count', 'HEAD'],
+              text=True
+          ).strip()
+
+          if ref.startswith('refs/tags/'):
+              version = ref.replace('refs/tags/', '').lstrip('v')
+          else:
+              with open('wfview/wfview.pro', 'r') as f:
+                  content = f.read()
+
+              for line in content.splitlines():
+                  if 'WFVIEW_VERSION' in line:
+                      m = re.search(r'(\d+\.\d+)', line)
+                      base = m.group(1) if m else '0.0'
+                      break
+
+              version = f"{base}-{short}"
+
+          print(f"Version will be: {version}")
+
+          # Update the .pro file
+          with open('wfview/wfview.pro', 'r') as f:
+              content = f.read()
+
+          content = re.sub(
+              r'(WFVIEW_VERSION=(?:\\+\")+)\d+\.\d+((?:\\+\")+)',
+              f'\\g<1>{version}\\g<2>',
+              content
+          )
+
+          with open('wfview/wfview.pro', 'w') as f:
+              f.write(content)
+
+          with open('wfview/wfview.pro', 'r') as f:
+              for line in f:
+                  if 'WFVIEW_VERSION' in line:
+                      print(f"Result: {repr(line.strip())}")
+
+          # Write outputs
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f"version={version}\n")
+              f.write(f"bundle_version={bundle_version}\n")
+
+      - name: Install jom
+        uses: nick-fields/retry@v2
+        with:
+          timeout_minutes: 5
+          max_attempts: 3
+          command: choco install jom -y
+          
+      - name: Write QCustomPlot pro file
+        shell: bash
+        run: |
+          mkdir -p qcustomplot/x64
+
+          cat > qcustomplot/qcustomplot-sharedlib.pro << 'EOF'
+          TEMPLATE = lib
+          TARGET = qcustomplot2
+          DESTDIR = x64
+          QT += widgets printsupport
+          CONFIG += release shared
+          DEFINES += QCUSTOMPLOT_COMPILE_LIBRARY
+          SOURCES += qcustomplot.cpp
+          HEADERS += qcustomplot.h
+          EOF
+
+      - name: Build QCustomPlot
+        shell: cmd
+        working-directory: ${{ github.workspace }}\qcustomplot
+        run: |
+          qmake qcustomplot-sharedlib.pro CONFIG+=release
+          jom -j %NUMBER_OF_PROCESSORS%
+
+      - name: Patch PortAudio output name
+        shell: bash
+        run: |
+          echo "set_target_properties(portaudio PROPERTIES OUTPUT_NAME portaudio_x64)" >> portaudio/CMakeLists.txt
+          
+      - name: Build PortAudio
+        shell: cmd
+        working-directory: ${{ github.workspace }}\portaudio
+        run: |
+          cmake -B build ^
+            -G "Visual Studio 17 2022" ^
+            -A x64 ^
+            -DPA_BUILD_SHARED=ON ^
+            -DPA_BUILD_STATIC=OFF 
+          cmake --build build --config Release
+
+          mkdir msvc\X64\Release
+          copy build\Release\portaudio_x64.dll msvc\X64\Release\portaudio_x64.dll
+          copy build\Release\portaudio_x64.lib msvc\X64\Release\portaudio_x64.lib
+
+      - name: Build HIDAPI
+        shell: cmd
+        working-directory: ${{ github.workspace }}\hidapi
+        run: |
+          cmake -B build ^
+            -G "Visual Studio 17 2022" ^
+            -A x64 ^
+            -DBUILD_SHARED_LIBS=ON
+          cmake --build build --config Release
+
+          mkdir windows\X64\Release
+          copy build\src\windows\Release\hidapi.dll windows\X64\Release\
+          copy build\src\windows\Release\hidapi.lib windows\X64\Release\
+
+      - name: Patch Opus output name
+        shell: bash
+        run: |
+          echo "set_target_properties(opus PROPERTIES OUTPUT_NAME opus-0)" >> opus/CMakeLists.txt
+
+      - name: Build Opus
+        shell: cmd
+        working-directory: ${{ github.workspace }}\opus
+        run: |
+          cmake -B build ^
+            -G "Visual Studio 17 2022" ^
+            -A x64 ^
+            -DBUILD_SHARED_LIBS=ON
+          cmake --build build --config Release
+
+          mkdir win32\VS2015\x64\ReleaseDLL
+          copy build\Release\opus-0.dll win32\VS2015\x64\ReleaseDLL\opus-0.dll
+          copy build\Release\opus-0.lib win32\VS2015\x64\ReleaseDLL\opus.lib
+        
+      - name: Build wfview
+        shell: cmd
+        working-directory: wfview
+        run: |
+          qmake wfview.pro CONFIG+=release
+          jom -j %NUMBER_OF_PROCESSORS%
+
+      - name: Deploy Qt dependencies
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: cmd
+        run: |
+          windeployqt ^
+            --release ^
+            --printsupport ^
+            --no-system-d3d-compiler ^
+            wfview\wfview-release\wfview.exe
+            
+      - name: Build Qt Installer
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $VERSION = "${{ steps.version.outputs.version }}"
+          $DATE = Get-Date -Format 'yyyy-MM-dd'
+          $PKG_DIR = "wfview\installer\packages\org.wfview.wfview"
+
+          # Copy app files into package data
+          New-Item -ItemType Directory -Force -Path "$PKG_DIR\data"
+          Copy-Item -Recurse -Force "wfview\wfview-release\*" "$PKG_DIR\data\"
+
+          # Download VC redist into package data so installscript.qs can run it
+          Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" `
+            -OutFile "$PKG_DIR\data\vc_redist.x64.exe"
+
+          # Inject version and date into config.xml and package.xml
+          (Get-Content "wfview\installer\config\config.xml") `
+            -replace '<Version>.*</Version>', "<Version>$VERSION</Version>" `
+            -replace '<Title>.*</Title>', "<Title>Welcome to the wfview v$VERSION (x64) installer</Title>" |
+            Set-Content "wfview\installer\config\config.xml"
+
+          (Get-Content "$PKG_DIR\meta\package.xml") `
+            -replace '<Version>.*</Version>', "<Version>$VERSION</Version>" `
+            -replace '<ReleaseDate>.*</ReleaseDate>', "<ReleaseDate>$DATE</ReleaseDate>" |
+            Set-Content "$PKG_DIR\meta\package.xml"
+
+          # Build installer
+          binarycreator `
+            --offline-only `
+            -c wfview\installer\config\config.xml `
+            -p wfview\installer\packages `
+            "wfview-windows-x64-setup.exe"
+            
+      - name: Upload installer
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: wfview-windows-x64
+          path: wfview-windows-x64-setup.exe
+
   # ═══════════════════════════════════════════════════════════════════
   #  macOS Universal Qt6 Build
   # ═══════════════════════════════════════════════════════════════════
@@ -34,7 +559,7 @@ jobs:
           path: wfview
           fetch-depth: 0
 
-      # ─── Determine version string ──────────────────────────────────
+      # ─── Determine version string ──────────────────────────────────      
       - name: Determine version
         id: version_info
         run: |
@@ -140,13 +665,60 @@ jobs:
           make -j$(sysctl -n hw.logicalcpu)
           cp ../../qcustomplot.h .
 
-      - name: Get version
+      - name: Get and update version
         id: version
+        shell: python
         run: |
-          VERSION=$(grep 'WFVIEW_VERSION' wfview/wfview.pro | grep -oE '[0-9]+\.[0-9]+')
-          BUNDLE_VERSION=$(git -C wfview rev-list --count HEAD)
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "bundle_version=$BUNDLE_VERSION" >> $GITHUB_OUTPUT
+          import os, re, subprocess
+
+          ref = os.environ['GITHUB_REF']
+          short = subprocess.check_output(
+              ['git', '-C', 'wfview', 'rev-parse', '--short', 'HEAD'],
+              text=True
+          ).strip()
+          bundle_version = subprocess.check_output(
+              ['git', '-C', 'wfview', 'rev-list', '--count', 'HEAD'],
+              text=True
+          ).strip()
+
+          if ref.startswith('refs/tags/'):
+              version = ref.replace('refs/tags/', '').lstrip('v')
+          else:
+              with open('wfview/wfview.pro', 'r') as f:
+                  content = f.read()
+
+              for line in content.splitlines():
+                  if 'WFVIEW_VERSION' in line:
+                      m = re.search(r'(\d+\.\d+)', line)
+                      base = m.group(1) if m else '0.0'
+                      break
+
+              version = f"{base}-{short}"
+
+          print(f"Version will be: {version}")
+
+          # Update the .pro file
+          with open('wfview/wfview.pro', 'r') as f:
+              content = f.read()
+
+          content = re.sub(
+              r'(WFVIEW_VERSION=(?:\\+\")+)\d+\.\d+((?:\\+\")+)',
+              f'\\g<1>{version}\\g<2>',
+              content
+          )
+
+          with open('wfview/wfview.pro', 'w') as f:
+              f.write(content)
+
+          with open('wfview/wfview.pro', 'r') as f:
+              for line in f:
+                  if 'WFVIEW_VERSION' in line:
+                      print(f"Result: {repr(line.strip())}")
+
+          # Write outputs
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f"version={version}\n")
+              f.write(f"bundle_version={bundle_version}\n")
 
       - name: Set version in Info.plist
         run: |
@@ -171,6 +743,7 @@ jobs:
           make -j$(sysctl -n hw.logicalcpu)
 
       - name: Deploy macOS App
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
           # Do not remove this line or the build will fail:
           echo "ICE == murderers"
@@ -216,7 +789,8 @@ jobs:
           echo "RPaths in binary:"
           otool -l "$BINARY" | grep -A2 LC_RPATH || true
 
-      - name: Import certificate
+      - name: Import certificate      
+        if: startsWith(github.ref, 'refs/tags/v')
         env:
           CERTIFICATE_DATA: ${{ secrets.MACOS_CERTIFICATE }}
           CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
@@ -229,6 +803,7 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
 
       - name: Sign application
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
           IDENTITY="Developer ID Application: Phil Taylor (${{ secrets.MACOS_NOTARY_TEAM }})"
           APP="wfview/wfview.app"
@@ -265,6 +840,7 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "$APP"
 
       - name: Notarize application
+        if: startsWith(github.ref, 'refs/tags/v')
         env:
           NOTARY_USER: ${{ secrets.MACOS_NOTARY_USER }}
           NOTARY_PWD: ${{ secrets.MACOS_NOTARY_PWD }}
@@ -284,12 +860,14 @@ jobs:
           xcrun stapler staple wfview/wfview.app
 
       - name: Package macOS App
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: lethja/create-dmg-action@v0.0.2
         with:
           name: 'wfview'
           srcdir: 'wfview/wfview.app'
 
       - name: Debug Output - Verify Library Linking
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
           echo "=== Dynamically linked libraries requested by wfview binary ==="
           otool -L wfview/wfview.app/Contents/MacOS/wfview
@@ -310,6 +888,7 @@ jobs:
           done
 
       - name: Upload macOS DMG artifact
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
         with:
           name: wfview-macos-dmg
@@ -421,6 +1000,71 @@ jobs:
           /sbin/ldconfig -p | grep "$lib" | head -2
         done
 
+    - name: Get and update version
+      id: version
+      shell: python
+      run: |
+        import os, re, subprocess
+
+        # Detect checkout location
+        if os.path.exists('wfview/.git'):
+            pro_path = 'wfview/wfview.pro'
+            git_dir = 'wfview'
+        elif os.path.exists('.git'):
+            pro_path = 'wfview.pro'
+            git_dir = '.'
+        else:
+            raise RuntimeError("Cannot find .git directory")
+
+        print(f"Using pro_path={pro_path}, git_dir={git_dir}")
+
+        ref = os.environ['GITHUB_REF']
+        short = subprocess.check_output(
+            ['git', '-C', git_dir, 'rev-parse', '--short', 'HEAD'],
+            text=True
+        ).strip()
+        bundle_version = subprocess.check_output(
+            ['git', '-C', git_dir, 'rev-list', '--count', 'HEAD'],
+            text=True
+        ).strip()
+
+        if ref.startswith('refs/tags/'):
+            version = ref.replace('refs/tags/', '').lstrip('v')
+        else:
+            with open(pro_path, 'r') as f:
+                content = f.read()
+
+            for line in content.splitlines():
+                if 'WFVIEW_VERSION' in line:
+                    m = re.search(r'(\d+\.\d+)', line)
+                    base = m.group(1) if m else '0.0'
+                    break
+
+            version = f"{base}-{short}"
+
+        print(f"Version will be: {version}")
+
+        with open(pro_path, 'r') as f:
+            content = f.read()
+
+        content = re.sub(
+            r'(WFVIEW_VERSION=(?:\\+\")+)\d+\.\d+((?:\\+\")+)',
+            f'\\g<1>{version}\\g<2>',
+            content
+        )
+
+        with open(pro_path, 'w') as f:
+            f.write(content)
+
+        with open(pro_path, 'r') as f:
+            for line in f:
+                if 'WFVIEW_VERSION' in line:
+                    print(f"Result: {repr(line.strip())}")
+
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+            f.write(f"version={version}\n")
+            f.write(f"bundle_version={bundle_version}\n")
+              
     # ─── Build ──────────────────────────────────────────────────────────
     - name: Run qmake
       run: |
@@ -448,6 +1092,7 @@ jobs:
 
     # ─── Prepare AppDir ─────────────────────────────────────────────────
     - name: Prepare AppDir structure
+      if: startsWith(github.ref, 'refs/tags/v')
       run: |
         mkdir -p AppDir/usr/bin
         mkdir -p AppDir/usr/share/applications
@@ -469,6 +1114,7 @@ jobs:
 
     # ─── DEBUG: Show AppDir contents ────────────────────────────────────
     - name: "DEBUG: List AppDir"
+      if: startsWith(github.ref, 'refs/tags/v')
       run: |
         echo "=== AppDir tree ==="
         find AppDir -type f | sort
@@ -478,6 +1124,7 @@ jobs:
 
     # ─── Download linuxdeploy ───────────────────────────────────────────
     - name: Download linuxdeploy and Qt plugin
+      if: startsWith(github.ref, 'refs/tags/v')
       run: |
         wget -q "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage" \
           -O linuxdeploy
@@ -487,6 +1134,7 @@ jobs:
 
     # ─── Create AppImage ────────────────────────────────────────────────
     - name: Build AppImage
+      if: startsWith(github.ref, 'refs/tags/v')
       run: |
         export QMAKE=$(which qmake)
         export PATH="$(pwd):$PATH"
@@ -526,6 +1174,7 @@ jobs:
 
     # ─── DEBUG: Verify AppImage ─────────────────────────────────────────
     - name: "DEBUG: Verify AppImage"
+      if: startsWith(github.ref, 'refs/tags/v')
       run: |
         ls -lh wfview.AppImage
         file wfview.AppImage
@@ -536,6 +1185,7 @@ jobs:
 
     # ─── Assemble makeself payload ──────────────────────────────────────
     - name: Assemble installer payload
+      if: startsWith(github.ref, 'refs/tags/v')
       run: |
         mkdir -p installer-payload
 
@@ -670,6 +1320,7 @@ jobs:
 
     # ─── DEBUG: Show payload contents ───────────────────────────────────
     - name: "DEBUG: List installer payload"
+      if: startsWith(github.ref, 'refs/tags/v')
       run: |
         echo "=== Payload contents ==="
         find installer-payload -type f | sort
@@ -678,6 +1329,7 @@ jobs:
 
     # ─── Build makeself installer ───────────────────────────────────────
     - name: Create makeself installer
+      if: startsWith(github.ref, 'refs/tags/v')
       run: |
         makeself \
           --gzip \
@@ -690,6 +1342,7 @@ jobs:
 
     # ─── Upload artifact ────────────────────────────────────────────────
     - name: Upload installer artifact
+      if: startsWith(github.ref, 'refs/tags/v')
       uses: actions/upload-artifact@v4
       with:
         name: wfview-linux-appimage-installer
@@ -697,12 +1350,12 @@ jobs:
         retention-days: 30
 
   # ═══════════════════════════════════════════════════════════════════
-  #  Publish Release (after both builds succeed)
+  #  Publish Release (after all builds succeed)
   # ═══════════════════════════════════════════════════════════════════
   publish-release:
     runs-on: ubuntu-latest
-    needs: [build-macos, build-linux-appimage]
-    if: needs.build-macos.outputs.has_tag == 'true'
+    needs: [build-windows-x86, build-windows-x64, build-macos, build-linux-appimage]
+    if: startsWith(github.ref, 'refs/tags/v')
 
     steps:
       - name: Checkout repository
@@ -722,6 +1375,18 @@ jobs:
           git log -1 --pretty=format:"%s" >> "$GITHUB_OUTPUT"
           echo "" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Download Windows x86 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: wfview-windows-x86
+          path: artifacts/
+
+      - name: Download Windows x64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: wfview-windows-x64
+          path: artifacts/
 
       - name: Download macOS DMG artifact
         uses: actions/download-artifact@v4
@@ -743,6 +1408,8 @@ jobs:
           prerelease: ${{ contains(steps.meta.outputs.version_string, 'beta') || contains(steps.meta.outputs.version_string, 'rc') }}
           make_latest: ${{ !contains(steps.meta.outputs.version_string, 'beta') && !contains(steps.meta.outputs.version_string, 'rc') }}
           files: |
+            artifacts/wfview-windows-x64-setup.exe
+            artifacts/wfview-windows-x86-setup.exe
             artifacts/wfview.dmg
             artifacts/wfview-installer.sh
           body: |
@@ -754,6 +1421,30 @@ jobs:
             | **Built** | ${{ steps.meta.outputs.timestamp }} |
 
             **Commit message:** ${{ steps.meta.outputs.git_msg }}
+
+            ---
+
+            ### Windows (x64 / Qt6)
+
+            | Field | Value |
+            |-------|-------|
+            | **Architecture** | x64 Windows Binary |
+            | **Framework** | Qt 6.8.1 |
+            | **Compatibility** | Windows 7 x64 and newer |
+
+            **Install:** Download `wfview-windows-x64-setup.exe`, run it and follow the prompts.
+
+            ---
+
+            ### Windows (x86 / Qt5)
+
+            | Field | Value |
+            |-------|-------|
+            | **Architecture** | x64 Windows Binary |
+            | **Framework** | Qt 5.15.2 |
+            | **Compatibility** | Windows XP and newer |
+
+            **Install:** Download `wfview-windows-x86-setup.exe`, run it and follow the prompts.
 
             ---
 
