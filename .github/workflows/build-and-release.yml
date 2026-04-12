@@ -88,9 +88,9 @@ jobs:
               f.write(f"version={version}\n")
               f.write(f"bundle_version={bundle_version}\n")
               if event_name == "schedule" or ref.startswith("refs/tags/"):
-                f.write(f"install=true\n")
-              else  
-                f.write(f"install=false\n")
+                f.write("install=true\n")
+              else:  
+                f.write("install=false\n")
 
       - name: Cache dependencies
         uses: actions/cache@v4
@@ -364,9 +364,9 @@ jobs:
               f.write(f"version={version}\n")
               f.write(f"bundle_version={bundle_version}\n")
               if event_name == "schedule" or ref.startswith("refs/tags/"):
-                f.write(f"install=true\n")
-              else  
-                f.write(f"install=false\n")
+                f.write("install=true\n")
+              else:  
+                f.write("install=false\n")
 
       - name: Cache dependencies
         uses: actions/cache@v4
@@ -632,9 +632,9 @@ jobs:
               f.write(f"bundle_version={bundle_version}\n")
               f.write(f"git_short={short}\n")
               if event_name == "schedule" or ref.startswith("refs/tags/"):
-                f.write(f"install=true\n")
-              else  
-                f.write(f"install=false\n")
+                f.write("install=true\n")
+              else:  
+                f.write("install=false\n")
       
       - name: Install Official Qt6 (Universal)
         uses: jurplel/install-qt-action@v4
@@ -974,9 +974,9 @@ jobs:
               f.write(f"bundle_version={bundle_version}\n")
               f.write(f"git_short={short}\n")
               if event_name == "schedule" or ref.startswith("refs/tags/"):
-                f.write(f"install=true\n")
-              else  
-                f.write(f"install=false\n")
+                f.write("install=true\n")
+              else:  
+                f.write("install=false\n")
       
     # ─── Install dependencies ───────────────────────────────────────────
     - name: Install build dependencies
