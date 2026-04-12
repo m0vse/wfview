@@ -926,11 +926,11 @@ jobs:
           ref = os.environ['GITHUB_REF']
           event_name = os.environ.get("GITHUB_EVENT_NAME")
           short = subprocess.check_output(
-              ['git', '-C', 'wfview', 'rev-parse', '--short', 'HEAD'],
+              ['git', 'rev-parse', '--short', 'HEAD'],
               text=True
           ).strip()
           bundle_version = subprocess.check_output(
-              ['git', '-C', 'wfview', 'rev-list', '--count', 'HEAD'],
+              ['git', 'rev-list', '--count', 'HEAD'],
               text=True
           ).strip()
 
