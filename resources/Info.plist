@@ -28,7 +28,5 @@
     <string>Storing temporary files</string>
     <key>NSLocalNetworkUsageDescription</key>
     <string>wfview needs local network access to connect to Icom transceivers</string>
-    <key>com.apple.security.cs.disable-library-validation</key>
-    <true/>
 </dict>
 </plist>
